@@ -51,7 +51,8 @@ data class Due(
   val string: String,
   val date: LocalDate,
   val datetime: Instant?,
-  val timezone: String?
+  val timezone: String?,
+  val lang: String
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -156,10 +157,12 @@ class TodoistClient(private val httpClient: HttpClient) {
     body = newTask
   }
 
-  suspend fun setLabels(taskID: Long, labelIDs: List<Long>): Unit = httpClient.post {
-    apiPath("tasks", taskID.toString())
+  suspend fun setLabels(task: Task, labelIDs: List<Long>): Unit = httpClient.post {
+    apiPath("tasks", task.id.toString())
     contentType(ContentType.Application.Json)
-    body = mapOf("label_ids" to labelIDs)
+    // We do a no-op set of the content because we apparently can't delete all labels
+    // by just setting label_ids to [].
+    body = mapOf("label_ids" to labelIDs, "content" to task.content)
   }
 }
 
@@ -171,7 +174,7 @@ suspend fun copyTree(client: TodoistClient, recurLabel: RecurLabel, task: TreeTa
 }
 
 suspend fun removeLabel(client: TodoistClient, recurLabel: RecurLabel, t: TreeTask) {
-  client.setLabels(t.task.id, t.task.labelIDs.filter { it != recurLabel.id })
+  client.setLabels(t.task, t.task.labelIDs.filter { it != recurLabel.id })
 }
 
 class Args(parser: ArgParser) {
