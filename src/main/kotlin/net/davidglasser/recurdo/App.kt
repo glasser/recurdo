@@ -160,9 +160,7 @@ class TodoistClient(private val httpClient: HttpClient) {
   suspend fun setLabels(task: Task, labelIDs: List<Long>): Unit = httpClient.post {
     apiPath("tasks", task.id.toString())
     contentType(ContentType.Application.Json)
-    // We do a no-op set of the content because we apparently can't delete all labels
-    // by just setting label_ids to [].
-    body = mapOf("label_ids" to labelIDs, "content" to task.content)
+    body = mapOf("label_ids" to labelIDs)
   }
 }
 
