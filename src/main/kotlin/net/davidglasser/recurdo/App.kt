@@ -34,20 +34,20 @@ fun ArgParser.DelegateProvider<String>.defaultToEnvVar(envVarName: String): ArgP
 const val LABEL_PREFIX = "recur_"
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-data class AnyLabel(val id: Long, val name: String) {
+data class AnyLabel(val name: String) {
   fun recurLabel(): RecurLabel? = name.takeIf { it.startsWith(LABEL_PREFIX) }?.let {
     try {
-      RecurLabel(id, Period.parse(it.removePrefix(LABEL_PREFIX)))
+      RecurLabel(name = name, period = Period.parse(it.removePrefix(LABEL_PREFIX)))
     } catch (t: DateTimeParseException) {
       throw SystemExitException("Bad label name $it", 1)
     }
   }
 }
 
-data class RecurLabel(val id: Long, val period: Period)
+data class RecurLabel(val name: String, val period: Period)
 
 data class Due(
-  val recurring: Boolean,
+  val isRecurring: Boolean,
   val string: String,
   val date: LocalDate,
   val datetime: Instant?,
@@ -57,23 +57,23 @@ data class Due(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Task(
-  val id: Long,
-  val projectID: Long,
-  val sectionID: Long,
+  val id: String,
+  val projectID: String,
+  val sectionID: String?,
   val content: String,
-  val labelIDs: List<Long>,
-  val parent: Long?,
+  val labels: List<String>,  // names, not IDs
+  val parentID: String?,
   val order: Int,
   val priority: Int,
   val due: Due?,
   val url: String
 ) {
-  fun asNewTask(period: Period, newParentID: Long?) = NewTask(
+  fun asNewTask(period: Period, newParentID: String?) = NewTask(
     projectID = projectID,
     sectionID = sectionID,
     content = content,
-    labelIDs = labelIDs,
-    parent = newParentID,
+    labels = labels,
+    parentID = newParentID,
     order = order,
     priority = priority,
     dueDate = due?.let { it.date + period }
@@ -81,11 +81,11 @@ data class Task(
 }
 
 data class NewTask(
-  val projectID: Long,
-  val sectionID: Long,
+  val projectID: String,
+  val sectionID: String?,
   val content: String,
-  val labelIDs: List<Long>,
-  val parent: Long?,
+  val labels: List<String>,
+  val parentID: String?,
   val order: Int,
   val priority: Int,
   val dueDate: LocalDate?
@@ -116,7 +116,7 @@ class TreeTask(
 
 @OptIn(ExperimentalStdlibApi::class)
 fun Iterable<Task>.asTreeTasks(): List<TreeTask> {
-  val originalTasksByParentID = groupBy { it.parent }.withDefault { emptyList() }
+  val originalTasksByParentID = groupBy { it.parentID }.withDefault { emptyList() }
   fun treeify(task: Task): TreeTask = TreeTask(
     task = task,
     children = originalTasksByParentID
@@ -137,7 +137,7 @@ fun Iterable<Task>.asTreeTasks(): List<TreeTask> {
 class TodoistClient(private val httpClient: HttpClient) {
   private fun HttpRequestBuilder.apiPath(vararg components: String) {
     url {
-      path(listOf("rest", "v1") + components)
+      path(listOf("rest", "v2") + components)
     }
   }
 
@@ -157,22 +157,22 @@ class TodoistClient(private val httpClient: HttpClient) {
     body = newTask
   }
 
-  suspend fun setLabels(task: Task, labelIDs: List<Long>): Unit = httpClient.post {
+  suspend fun setLabels(task: Task, labels: List<String>): Unit = httpClient.post {
     apiPath("tasks", task.id.toString())
     contentType(ContentType.Application.Json)
-    body = mapOf("label_ids" to labelIDs)
+    body = mapOf("labels" to labels)
   }
 }
 
-suspend fun copyTree(client: TodoistClient, recurLabel: RecurLabel, task: TreeTask, overrideParentID: Long?) {
-  val copiedTask = client.createTask(task.task.asNewTask(recurLabel.period, overrideParentID ?: task.task.parent))
+suspend fun copyTree(client: TodoistClient, recurLabel: RecurLabel, task: TreeTask, overrideParentID: String?) {
+  val copiedTask = client.createTask(task.task.asNewTask(recurLabel.period, overrideParentID ?: task.task.parentID))
   task.children.forEach { child ->
     copyTree(client, recurLabel, child, copiedTask.id)
   }
 }
 
 suspend fun removeLabel(client: TodoistClient, recurLabel: RecurLabel, t: TreeTask) {
-  client.setLabels(t.task, t.task.labelIDs.filter { it != recurLabel.id })
+  client.setLabels(t.task, t.task.labels.filter { it != recurLabel.name })
 }
 
 class Args(parser: ArgParser) {
@@ -220,25 +220,25 @@ fun main(argv: Array<String>) = mainBody {
 }
 
 private suspend fun process(client: TodoistClient, cutoff: LocalDate): Int {
-  val recurLabels = client.getRecurLabels().associateBy { it.id }
+  val recurLabelsByName = client.getRecurLabels().associateBy { it.name }
   return client.getAllTasks().filter { t ->
-    t.task.labelIDs.any { it in recurLabels }
+    t.task.labels.any { it in recurLabelsByName }
   }.map { t ->
     // First validate all the tasks (even those that aren't ready yet)
     checkNotNull(t.task.due) { "Labeled task has no due date: $t" }
 
-    val recurLabel = t.task.labelIDs.mapNotNull { recurLabels[it] }.also {
+    val recurLabel = t.task.labels.mapNotNull { recurLabelsByName[it] }.also {
       check(it.size == 1) { "Task has multiple recur labels: $t" }
     }.single()
 
     t.descendants().forEach { node ->
-      check(node.task.labelIDs.none { it in recurLabels }) {
+      check(node.task.labels.none { it in recurLabelsByName }) {
         "Task with recur label nested under another one: $node under $t"
       }
     }
     t.withDescendants().forEach { node ->
       node.task.due?.let { due ->
-        check(!due.recurring) { "Task under labeled task cannot be recurring: $node" }
+        check(!due.isRecurring) { "Task under labeled task cannot be recurring: $node" }
         // just don't want to bother thinking about handling date and datetime separately.
         check(due.datetime == null) { "Task under labeled task cannot have a specific time of day: $node" }
       }
