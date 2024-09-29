@@ -6,7 +6,7 @@ plugins {
 }
 
 repositories {
-  jcenter()
+  mavenCentral()
 }
 
 dependencies {
@@ -16,7 +16,7 @@ dependencies {
 
   implementation("com.xenomachina:kotlin-argparser:2.0.7")
   listOf("core", "cio", "json", "jackson").forEach {
-    implementation("io.ktor:ktor-client-$it:1.3.2")
+    implementation("io.ktor:ktor-client-$it:1.4.0")
   }
 
   "2.10.0".let { v ->
