@@ -55,6 +55,11 @@ data class Due(
   val lang: String
 )
 
+data class Deadline(
+  val date: LocalDate,
+  val lang: String
+)
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Task(
   val id: String,
@@ -66,6 +71,7 @@ data class Task(
   val order: Int,
   val priority: Int,
   val due: Due?,
+  val deadline: Deadline?,
   val url: String
 ) {
   fun asNewTask(period: Period, newParentID: String?) = NewTask(
@@ -76,7 +82,8 @@ data class Task(
     parentID = newParentID,
     order = order,
     priority = priority,
-    dueDate = due?.let { it.date + period }
+    dueDate = due?.let { it.date + period },
+    deadlineDate = deadline?.let { it.date + period }
   )
 }
 
@@ -88,7 +95,8 @@ data class NewTask(
   val parentID: String?,
   val order: Int,
   val priority: Int,
-  val dueDate: LocalDate?
+  val dueDate: LocalDate?,
+  val deadlineDate: LocalDate?
 )
 
 class TreeTask(
