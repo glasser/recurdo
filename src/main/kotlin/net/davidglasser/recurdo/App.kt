@@ -50,7 +50,7 @@ data class Due(
   val isRecurring: Boolean,
   val string: String,
   val date: LocalDate,
-  val datetime: Instant?,
+  val datetime: String?,
   val timezone: String?,
   val lang: String
 )
@@ -248,7 +248,7 @@ private suspend fun process(client: TodoistClient, cutoff: LocalDate): Int {
       node.task.due?.let { due ->
         check(!due.isRecurring) { "Task under labeled task cannot be recurring: $node" }
         // just don't want to bother thinking about handling date and datetime separately.
-        check(due.datetime == null) { "Task under labeled task cannot have a specific time of day: $node" }
+        check(due.datetime.isNullOrBlank()) { "Task under labeled task cannot have a specific time of day: $node" }
       }
     }
 
