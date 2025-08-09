@@ -2,5 +2,5 @@
 java = "zulu-8.80.0.17"
 gradle = "6.4.1"
 
-[env]
-_.path = ["./bin"]
+[tasks.recurdo]
+run = "./bin/recurdo"
